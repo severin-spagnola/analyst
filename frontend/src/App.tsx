@@ -82,51 +82,59 @@ function App() {
   ]);
   const [sendingMessage, setSendingMessage] = useState(false);
 
-  // Add this inside the App component, after other useEffects:
-
   useEffect(() => {
-    if (!scanning) return;
-    
-    // Poll for scan updates while scanning
+    if (!scanning || !selectedScanId) return;
+
+    console.log('Starting poll for scan:', selectedScanId);
+
     const interval = setInterval(async () => {
       try {
-        const response = await fetch('http://localhost:8000/api/scans');
-        const data = await response.json();
-        setScans(data.scans);
-        
-        // Check if our scan completed
-        const currentScan = data.scans.find((s: Scan) => s.id === selectedScanId);
-        if (currentScan && currentScan.status !== 'In Progress') {
-          setScanning(false);
-          setProgress(100);
-          
-          // Refresh findings too
-          const findingsResponse = await fetch('http://localhost:8000/api/findings');
-          const findingsData = await findingsResponse.json();
-          setFindings(findingsData.findings);
+        const scansData = await fetchScans();
+        setScans(scansData);
+
+        const currentScan = scansData.find((s) => s.id === selectedScanId);
+
+        if (currentScan) {
+          console.log('Poll update:', currentScan.status, currentScan.riskScore + '%');
+
+          if (currentScan.status !== 'In Progress') {
+            console.log('Scan completed!', currentScan);
+
+            setProgress(100);
+
+            const findingsData = await fetchFindings();
+            setFindings(findingsData);
+
+            setTimeout(() => {
+              setScanning(false);
+              setProgress(0);
+            }, 1500);
+          }
         }
       } catch (error) {
         console.error('Poll failed:', error);
       }
-    }, 2000); // Poll every 2 seconds
-    
-    return () => clearInterval(interval);
+    }, 2000);
+
+    return () => {
+      console.log('Stopping poll');
+      clearInterval(interval);
+    };
   }, [scanning, selectedScanId]);
 
-  // Load initial data
   useEffect(() => {
     const loadData = async () => {
       try {
-        const [scansData, findingsData] = await Promise.all([
+        const [scansResponse, findingsResponse] = await Promise.all([
           fetchScans(),
           fetchFindings(),
         ]);
         
-        setScans(scansData);
-        setFindings(findingsData);
+        setScans(scansResponse);  // fetchScans already returns Scan[], not { scans: Scan[] }
+        setFindings(findingsResponse);  // fetchFindings already returns Finding[]
         
-        if (scansData.length > 0) {
-          setSelectedScanId(scansData[0].id);
+        if (scansResponse.length > 0) {
+          setSelectedScanId(scansResponse[0].id);
         }
       } catch (error) {
         console.error('Failed to load data:', error);
@@ -134,79 +142,43 @@ function App() {
         setLoadingData(false);
       }
     };
-
+  
     loadData();
   }, []);
 
   // Progress bar simulation for scanning
   useEffect(() => {
     if (!scanning) return;
+    
     const interval = setInterval(() => {
-      setProgress((prev) => (prev >= 95 ? prev : prev + Math.random() * 5));
-    }, 300);
+      setProgress((prev) => {
+        // Slow down as we approach 95%
+        if (prev >= 95) return Math.min(prev + 0.5, 98);
+        if (prev >= 80) return prev + 1;
+        if (prev >= 60) return prev + 2;
+        return prev + 3;
+      });
+    }, 500);
+    
     return () => clearInterval(interval);
   }, [scanning]);
 
   // Handle start scan
   const handleStartScan = async () => {
-    const id = `scan-${Date.now()}`;
-    
-    // Create in-progress scan immediately for UI
-    const inProgressScan: Scan = {
-      id,
-      target,
-      tools: selectedTools,
-      startedAt: new Date().toISOString(),
-      status: 'In Progress',
-      issues: 0,
-      critical: 0,
-      durationMinutes: undefined,
-      owner: 'you',
-      riskScore: 0,
-      summary: 'Scan in progress...',
-      aiSummary: 'Running security analysis...',
-    };
-
-    setScans((prev) => [inProgressScan, ...prev]);
-    setSelectedScanId(id);
     setProgress(0);
     setScanning(true);
 
     try {
-      // Call real API
-      const completedScan = await startScan(selectedTools, target);
-      
-      // Replace in-progress scan with completed one
-      setScans((prev) => prev.map((s) => (s.id === id ? completedScan : s)));
-      
-      // Add a finding for this scan
-      const newFinding: Finding = {
-        id: `finding-${Date.now()}`,
-        scanId: completedScan.id,
-        host: completedScan.target,
-        port: 80,
-        severity: completedScan.critical > 0 ? 'Critical' : 'High',
-        tool: completedScan.tools[0] || 'Nmap',
-        status: 'Open',
-        title: `Security issues detected on ${completedScan.target}`,
-        description: completedScan.summary,
-        recommendation: 'Review scan details and apply recommended patches',
-      };
-      setFindings((prev) => [newFinding, ...prev]);
-      
+      const newScan = await startScan(selectedTools, target);
+      console.log('Backend returned scan:', newScan);
+      console.log('Scan started with ID:', newScan.id);
+
+      setScans((prev) => [newScan, ...prev]);
+      setSelectedScanId(newScan.id);
     } catch (error) {
-      console.error('Scan failed:', error);
-      // Mark scan as failed
-      setScans((prev) =>
-        prev.map((s) =>
-          s.id === id
-            ? { ...s, status: 'Failed' as const, summary: 'Scan failed' }
-            : s
-        )
-      );
-    } finally {
+      console.error('Failed to start scan:', error);
       setScanning(false);
-      setProgress(0);
+      alert('Failed to start scan: ' + error);
     }
   };
 
@@ -678,19 +650,30 @@ function App() {
                         <span
                           className={`px-2 py-1 rounded-lg text-xs font-medium ${
                             scan.status === 'Completed'
-                              ? 'bg-green-500/10 text-green-400'
+                              ? 'bg-green-500/10 text-green-400 border border-green-500/20'
                               : scan.status === 'Clean'
-                              ? 'bg-blue-500/10 text-blue-400'
+                              ? 'bg-blue-500/10 text-blue-400 border border-blue-500/20'
                               : scan.status === 'Failed'
-                              ? 'bg-red-500/10 text-red-400'
-                              : 'bg-yellow-500/10 text-yellow-400'
+                              ? 'bg-red-500/10 text-red-400 border border-red-500/20'
+                              : 'bg-yellow-500/10 text-yellow-400 border border-yellow-500/20'
                           }`}
                         >
                           {scan.status}
                         </span>
                       </div>
                       <div>
-                        <div className="font-mono text-sm font-bold">{scan.riskScore}%</div>
+                        <div>
+                          <div className={`font-mono text-sm font-bold ${
+                            scan.riskScore > 70 ? 'text-red-400' : 
+                            scan.riskScore > 40 ? 'text-yellow-400' : 
+                            'text-green-400'
+                          }`}>
+                            {scan.riskScore}%
+                          </div>
+                          <div className="text-xs text-slate-400 line-clamp-1">
+                            {scan.summary}
+                          </div>
+                        </div>
                         <div className="text-xs text-slate-400 line-clamp-1">
                           {scan.summary}
                         </div>

@@ -1,14 +1,19 @@
 const API_BASE = 'http://localhost:8000/api';
 
+export type ScanTool = 'Nmap' | 'Nuclei' | 'Nikto' | 'OpenVAS';
+export type ScanStatus = 'In Progress' | 'Completed' | 'Clean' | 'Failed';
+export type Severity = 'Critical' | 'High' | 'Medium' | 'Low' | 'Info';
+export type FindingStatus = 'Open' | 'In Progress' | 'Resolved';
+
 export interface Scan {
   id: string;
   target: string;
-  tools: string[];
+  tools: ScanTool[];
   startedAt: string;
-  status: 'In Progress' | 'Completed' | 'Clean' | 'Failed';
+  status: ScanStatus;
   issues: number;
   critical: number;
-  durationMinutes?: number;
+  durationMinutes: number;
   owner: string;
   riskScore: number;
   summary: string;
@@ -21,9 +26,9 @@ export interface Finding {
   host: string;
   port?: number;
   service?: string;
-  severity: 'Critical' | 'High' | 'Medium' | 'Low' | 'Info';
-  tool: string;
-  status: 'Open' | 'In Progress' | 'Resolved';
+  severity: Severity;
+  tool: ScanTool;
+  status: FindingStatus;
   title: string;
   description: string;
   recommendation: string;
@@ -49,7 +54,7 @@ export async function fetchFindings(): Promise<Finding[]> {
   return data.findings;
 }
 
-export async function startScan(tools: string[], target: string): Promise<Scan> {
+export async function startScan(tools: ScanTool[], target: string): Promise<Scan> {
   const response = await fetch(`${API_BASE}/scans/start`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
