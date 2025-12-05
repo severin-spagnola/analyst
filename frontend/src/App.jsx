@@ -1,34 +1,62 @@
 import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from '/vite.svg'
 import './App.css'
 
 function App() {
-  const [count, setCount] = useState(0)
+  const [target, setTarget] = useState('localhost')
+  const [loading, setLoading] = useState(false)
+  const [results, setResults] = useState(null)
+
+  const runScan = async () => {
+    setLoading(true)
+    try {
+      const response = await fetch('http://localhost:8000/scan', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ target })
+      })
+      const data = await response.json()
+      setResults(data)
+    } catch (error) {
+      console.error('Scan failed:', error)
+      alert('Scan failed: ' + error.message)
+    }
+    setLoading(false)
+  }
 
   return (
-    <>
-      <div>
-        <a href="https://vite.dev" target="_blank">
-          <img src={viteLogo} className="logo" alt="Vite logo" />
-        </a>
-        <a href="https://react.dev" target="_blank">
-          <img src={reactLogo} className="logo react" alt="React logo" />
-        </a>
-      </div>
-      <h1>Vite + React</h1>
-      <div className="card">
-        <button onClick={() => setCount((count) => count + 1)}>
-          count is {count}
+    <div className="App">
+      <h1>🛡️ CyberSec AI Agent</h1>
+      <p>AI-Powered Security Analysis for SMBs</p>
+      
+      <div className="scan-input">
+        <input 
+          type="text" 
+          value={target}
+          onChange={(e) => setTarget(e.target.value)}
+          placeholder="Enter target IP or hostname"
+          disabled={loading}
+        />
+        <button onClick={runScan} disabled={loading}>
+          {loading ? 'Scanning...' : 'Run Security Scan'}
         </button>
-        <p>
-          Edit <code>src/App.jsx</code> and save to test HMR
-        </p>
       </div>
-      <p className="read-the-docs">
-        Click on the Vite and React logos to learn more
-      </p>
-    </>
+
+      {results && (
+        <div className="results">
+          <div className="section">
+            <h2>🤖 AI Analysis</h2>
+            <pre className="ai-output">{results.ai_analysis}</pre>
+          </div>
+          
+          <details>
+            <summary>View Raw Scanner Output</summary>
+            <pre className="raw-output">{results.raw_output}</pre>
+          </details>
+        </div>
+      )}
+    </div>
   )
 }
 

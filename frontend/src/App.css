@@ -1,42 +1,67 @@
-#root {
-  max-width: 1280px;
+.App {
+  max-width: 1200px;
   margin: 0 auto;
   padding: 2rem;
-  text-align: center;
 }
 
-.logo {
-  height: 6em;
-  padding: 1.5em;
-  will-change: filter;
-  transition: filter 300ms;
-}
-.logo:hover {
-  filter: drop-shadow(0 0 2em #646cffaa);
-}
-.logo.react:hover {
-  filter: drop-shadow(0 0 2em #61dafbaa);
+h1 {
+  color: #2563eb;
 }
 
-@keyframes logo-spin {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
+.scan-input {
+  display: flex;
+  gap: 1rem;
+  margin: 2rem 0;
 }
 
-@media (prefers-reduced-motion: no-preference) {
-  a:nth-of-type(2) .logo {
-    animation: logo-spin infinite 20s linear;
-  }
+.scan-input input {
+  flex: 1;
+  padding: 0.75rem;
+  font-size: 1rem;
+  border: 2px solid #e5e7eb;
+  border-radius: 0.5rem;
 }
 
-.card {
-  padding: 2em;
+.scan-input button {
+  padding: 0.75rem 2rem;
+  font-size: 1rem;
+  background: #2563eb;
+  color: white;
+  border: none;
+  border-radius: 0.5rem;
+  cursor: pointer;
 }
 
-.read-the-docs {
-  color: #888;
+.scan-input button:disabled {
+  background: #9ca3af;
+  cursor: not-allowed;
+}
+
+.results {
+  margin-top: 2rem;
+}
+
+.section {
+  margin: 2rem 0;
+}
+
+.ai-output {
+  background: #f0fdf4;
+  border-left: 4px solid #22c55e;
+  padding: 1.5rem;
+  white-space: pre-wrap;
+  font-family: 'Courier New', monospace;
+}
+
+.raw-output {
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+  padding: 1rem;
+  overflow-x: auto;
+  font-size: 0.875rem;
+}
+
+details {
+  margin-top: 2rem;
+  cursor: pointer;
 }
