@@ -82,6 +82,16 @@ function App() {
   ]);
   const [sendingMessage, setSendingMessage] = useState(false);
 
+  const formatAiText = (text: string) => {
+    if (!text) return '';
+    return text
+      .replace(/^#{1,6}\s*/gm, '') // strip markdown headings
+      .replace(/^\s*[-*]\s+/gm, '• ') // bullets
+      .replace(/\*\*(.*?)\*\*/g, '$1') // bold
+      .replace(/__(.*?)__/g, '$1') // underline style
+      .replace(/`([^`]+)`/g, '$1'); // inline code
+  };
+
   useEffect(() => {
     if (!scanning || !selectedScanId) return;
 
@@ -130,11 +140,15 @@ function App() {
           fetchFindings(),
         ]);
         
-        setScans(scansResponse);  // fetchScans already returns Scan[], not { scans: Scan[] }
-        setFindings(findingsResponse);  // fetchFindings already returns Finding[]
+        const sortedScans = [...scansResponse].sort(
+          (a, b) => new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime()
+        );
+
+        setScans(sortedScans);
+        setFindings(findingsResponse);
         
-        if (scansResponse.length > 0) {
-          setSelectedScanId(scansResponse[0].id);
+        if (sortedScans.length > 0) {
+          setSelectedScanId(sortedScans[0].id);
         }
       } catch (error) {
         console.error('Failed to load data:', error);
@@ -616,7 +630,9 @@ function App() {
                 </div>
               ) : (
                 <div className="divide-y divide-slate-800">
-                  {filteredScans.map((scan) => (
+                  {[...filteredScans]
+                    .sort((a, b) => new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime())
+                    .map((scan) => (
                     <button
                       key={scan.id}
                       onClick={() => setSelectedScanId(scan.id)}
@@ -699,7 +715,9 @@ function App() {
                   </div>
                   <div className="bg-slate-800/50 border border-slate-700 rounded-lg p-4 space-y-3">
                     <div className="font-medium text-slate-200">SUMMARY</div>
-                    <div className="text-sm text-slate-300">{selectedScan.aiSummary}</div>
+                    <div className="text-sm text-slate-300 whitespace-pre-wrap">
+                      {formatAiText(selectedScan.aiSummary)}
+                    </div>
                   </div>
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-1">
@@ -897,7 +915,9 @@ function App() {
                 <>
                   <div className="text-sm text-slate-400">AI summary for the latest run.</div>
                   <div className="bg-slate-800/50 border border-slate-700 rounded-lg p-4 space-y-3">
-                    <div className="text-sm text-slate-300">{selectedScan.aiSummary}</div>
+                    <div className="text-sm text-slate-300 whitespace-pre-wrap">
+                      {formatAiText(selectedScan.aiSummary)}
+                    </div>
                   </div>
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-1">
@@ -944,8 +964,9 @@ function App() {
                             ? 'bg-slate-800 text-slate-200'
                             : 'bg-cyan-500/10 text-slate-200'
                         }`}
+                        style={{ whiteSpace: 'pre-wrap' }}
                       >
-                        {msg.text}
+                        {msg.sender === 'ai' ? formatAiText(msg.text) : msg.text}
                       </div>
                       <div className="text-xs text-slate-500">{msg.time}</div>
                     </div>
