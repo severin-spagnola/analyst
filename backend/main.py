@@ -4,6 +4,9 @@ import subprocess
 import anthropic
 import os
 from pydantic import BaseModel
+from dotenv import load_dotenv
+
+load_dotenv()
 
 app = FastAPI()
 
@@ -18,63 +21,75 @@ app.add_middleware(
 client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
 
 class ScanRequest(BaseModel):
-    target: str
+    target: str = "network"  # Default to scanning the network
 
 @app.post("/scan")
 async def run_security_scan(request: ScanRequest):
-    target = request.target
+    # Scan the local "network" - our Docker containers
+    targets = [
+        ("localhost", "8080", "Web Application Server (DVWA)"),
+        ("localhost", "8081", "WordPress Server"),
+        ("localhost", "3306", "Database Server (MySQL)"),
+    ]
     
-    # Run quick nmap scan
-    print(f"Scanning {target}...")
-    nmap_result = subprocess.run(
-        ['nmap', '-sV', '-F', target],
-        capture_output=True,
-        text=True,
-        timeout=60
-    )
+    all_scans = []
     
-    # Run nikto if it's a web target
-    nikto_result = subprocess.run(
-        ['nikto', '-h', f'http://{target}', '-Tuning', '1,2,3'],
-        capture_output=True,
-        text=True,
-        timeout=60
-    )
+    for host, port, description in targets:
+        print(f"Scanning {description} on {host}:{port}...")
+        
+        try:
+            # Quick nmap scan on specific port
+            nmap_result = subprocess.run(
+                ['nmap', '-sV', '-p', port, host],
+                capture_output=True,
+                text=True,
+                timeout=30
+            )
+            
+            all_scans.append(f"""
+=== {description} ===
+Target: {host}:{port}
+{nmap_result.stdout}
+""")
+        except subprocess.TimeoutExpired:
+            all_scans.append(f"=== {description} ===\nScan timeout\n")
+        except Exception as e:
+            all_scans.append(f"=== {description} ===\nError: {str(e)}\n")
     
-    raw_output = f"""
-    === NMAP SCAN ===
-    {nmap_result.stdout}
+    combined_output = "\n".join(all_scans)
     
-    === NIKTO WEB SCAN ===
-    {nikto_result.stdout}
-    """
+    print("Sending to Claude for analysis...")
     
-    # Send to Claude for analysis
+    # Send to Claude
     message = client.messages.create(
         model="claude-sonnet-4-20250514",
-        max_tokens=1500,
+        max_tokens=2000,
         messages=[{
             "role": "user",
-            "content": f"""You are a cybersecurity analyst. Analyze this security scan output and provide:
+            "content": f"""You are a cybersecurity analyst scanning a small business network. Analyze these security scans from multiple machines:
 
-1. Top 3 critical vulnerabilities found
-2. Risk level (Critical/High/Medium/Low) for each
-3. Specific remediation steps with commands where applicable
-4. Executive summary in plain English
+{combined_output}
 
-Format your response clearly with headers.
+Provide:
+1. **Network Overview**: What services are running across the network
+2. **Top 3 Critical Vulnerabilities**: Prioritized by actual risk
+3. **Risk Assessment**: Overall security posture (High/Medium/Low risk)
+4. **Remediation Steps**: Specific actions to take
 
-SCAN OUTPUT:
-{raw_output}
-"""
+Be concise but actionable. Format with clear headers."""
         }]
     )
     
     return {
-        "raw_output": raw_output,
-        "ai_analysis": message.content[0].text
+        "raw_output": combined_output,
+        "ai_analysis": message.content[0].text,
+        "targets_scanned": len(targets)
     }
 
 @app.get("/")
 async def root():
-    return {"status": "CyberSec AI Agent API running"}
+    return {"status": "CyberSec AI Agent API running", "version": "1.0"}
+
+@app.get("/health")
+async def health():
+    return {"status": "healthy"}

@@ -1,0 +1,39 @@
+services:
+  # Vulnerable web app
+  dvwa:
+    image: vulnerables/web-dvwa
+    ports:
+      - "8080:80"
+    networks:
+      - hack-network
+
+  # Old WordPress (tons of vulns)
+  wordpress:
+    image: wordpress:5.8
+    ports:
+      - "8081:80"
+    environment:
+      WORDPRESS_DB_HOST: db
+      WORDPRESS_DB_USER: admin
+      WORDPRESS_DB_PASSWORD: password123
+      WORDPRESS_DB_NAME: wordpress
+    networks:
+      - hack-network
+
+  # Exposed database - ARM64 compatible version
+  db:
+    image: mysql:8.0
+    platform: linux/amd64
+    ports:
+      - "3306:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: password123
+      MYSQL_DATABASE: wordpress
+      MYSQL_USER: admin
+      MYSQL_PASSWORD: password123
+    networks:
+      - hack-network
+
+networks:
+  hack-network:
+    driver: bridge
