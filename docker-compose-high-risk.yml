@@ -1,0 +1,40 @@
+services:
+  # MORE vulnerable setup
+  dvwa-exposed:
+    image: vulnerables/web-dvwa
+    platform: linux/amd64
+    ports:
+      - "8080:80"
+    networks:
+      - hack-network
+
+  old-wordpress:
+    image: wordpress:5.0  # Old but ARM-compatible
+    ports:
+      - "8081:80"
+    environment:
+      WORDPRESS_DB_HOST: db
+      WORDPRESS_DB_USER: root  # Root user!
+      WORDPRESS_DB_PASSWORD: admin  # Weak password!
+      WORDPRESS_DB_NAME: wordpress
+    networks:
+      - hack-network
+
+  db-exposed:
+    image: mysql:5.7  # Old version, ARM-compatible
+    platform: linux/amd64
+    ports:
+      - "3306:3306"
+      - "33060:33060"  # Extra MySQL X Protocol port exposed!
+    environment:
+      MYSQL_ROOT_PASSWORD: password  # Weak password!
+      MYSQL_DATABASE: wordpress
+      MYSQL_USER: admin
+      MYSQL_PASSWORD: admin
+    command: --bind-address=0.0.0.0  # Exposed to world!
+    networks:
+      - hack-network
+
+networks:
+  hack-network:
+    driver: bridge
