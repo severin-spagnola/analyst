@@ -1,46 +1,6 @@
 import { useState, useEffect } from 'react';
 import { fetchScans, fetchFindings, startScan, cancelScan, sendChat } from './api';
-
-type ScanTool = 'Nmap' | 'Nuclei' | 'Nikto' | 'OpenVAS';
-type ScanStatus = 'In Progress' | 'Completed' | 'Clean' | 'Failed';
-type Severity = 'Critical' | 'High' | 'Medium' | 'Low' | 'Info';
-type FindingStatus = 'Open' | 'In Progress' | 'Resolved';
-
-interface Scan {
-  id: string;
-  target: string;
-  tools: ScanTool[];
-  startedAt: string;
-  status: ScanStatus;
-  issues: number;
-  critical: number;
-  durationMinutes?: number;
-  owner: string;
-  riskScore: number;
-  summary: string;
-  aiSummary: string;
-}
-
-interface Finding {
-  id: string;
-  scanId: string;
-  host: string;
-  port?: number;
-  service?: string;
-  severity: Severity;
-  tool: ScanTool;
-  status: FindingStatus;
-  title: string;
-  description: string;
-  recommendation: string;
-}
-
-interface ChatMessage {
-  id: string;
-  sender: 'user' | 'ai';
-  text: string;
-  time: string;
-}
+import type { Scan, Finding, ChatMessage, ScanTool, ScanStatus, Severity, FindingStatus } from './types';
 
 type View = 'landing' | 'dashboard';
 type Tab = 'scans' | 'findings' | 'analytics' | 'assistant';
@@ -82,70 +42,22 @@ function App() {
   ]);
   const [sendingMessage, setSendingMessage] = useState(false);
 
-  const formatAiText = (text: string) => {
-    if (!text) return '';
-    return text
-      .replace(/^#{1,6}\s*/gm, '') // strip markdown headings
-      .replace(/^\s*[-*]\s+/gm, '• ') // bullets
-      .replace(/\*\*(.*?)\*\*/g, '$1') // bold
-      .replace(/__(.*?)__/g, '$1') // underline style
-      .replace(/`([^`]+)`/g, '$1'); // inline code
-  };
-
+  // Load initial data
   useEffect(() => {
-    if (!scanning || !selectedScanId) return;
-
-    console.log('Starting poll for scan:', selectedScanId);
-
-    const interval = setInterval(async () => {
+    const loadInitialData = async () => {
       try {
-        const scansData = await fetchScans();
-        setScans(scansData);
-
-        const currentScan = scansData.find((s) => s.id === selectedScanId);
-
-        if (currentScan) {
-          console.log('Poll update:', currentScan.status, currentScan.riskScore + '%');
-
-          if (currentScan.status !== 'In Progress') {
-            console.log('Scan completed!', currentScan);
-
-            setProgress(100);
-
-            const findingsData = await fetchFindings();
-            setFindings(findingsData);
-
-            setTimeout(() => {
-              setScanning(false);
-              setProgress(0);
-            }, 1500);
-          }
-        }
-      } catch (error) {
-        console.error('Poll failed:', error);
-      }
-    }, 2000);
-
-    return () => {
-      console.log('Stopping poll');
-      clearInterval(interval);
-    };
-  }, [scanning, selectedScanId]);
-
-  useEffect(() => {
-    const loadData = async () => {
-      try {
-        const [scansResponse, findingsResponse] = await Promise.all([
+        const [scansData, findingsData] = await Promise.all([
           fetchScans(),
           fetchFindings(),
         ]);
         
-        const sortedScans = [...scansResponse].sort(
-          (a, b) => new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime()
+        // Sort scans by date, newest first
+        const sortedScans = scansData.sort((a, b) => 
+          new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime()
         );
-
+        
         setScans(sortedScans);
-        setFindings(findingsResponse);
+        setFindings(findingsData);
         
         if (sortedScans.length > 0) {
           setSelectedScanId(sortedScans[0].id);
@@ -156,17 +68,16 @@ function App() {
         setLoadingData(false);
       }
     };
-  
-    loadData();
+
+    loadInitialData();
   }, []);
 
-  // Progress bar simulation for scanning
+  // Progress bar simulation
   useEffect(() => {
     if (!scanning) return;
     
     const interval = setInterval(() => {
       setProgress((prev) => {
-        // Slow down as we approach 95%
         if (prev >= 95) return Math.min(prev + 0.5, 98);
         if (prev >= 80) return prev + 1;
         if (prev >= 60) return prev + 2;
@@ -177,18 +88,65 @@ function App() {
     return () => clearInterval(interval);
   }, [scanning]);
 
+  // Poll for scan updates while scanning
+  useEffect(() => {
+    if (!scanning || !selectedScanId) return;
+    
+    console.log('Starting poll for scan:', selectedScanId);
+    
+    const interval = setInterval(async () => {
+      try {
+        const scansData = await fetchScans();
+        setScans(scansData.sort((a, b) => 
+          new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime()
+        ));
+        
+        const currentScan = scansData.find((s) => s.id === selectedScanId);
+        
+        if (currentScan) {
+          console.log('Poll update:', currentScan.status, currentScan.riskScore + '%');
+          
+          if (currentScan.status !== 'In Progress') {
+            console.log('Scan completed!', currentScan);
+            setProgress(100);
+            
+            const findingsData = await fetchFindings();
+            setFindings(findingsData);
+            
+            setTimeout(() => {
+              setScanning(false);
+              setProgress(0);
+            }, 1500);
+          }
+        }
+      } catch (error) {
+        console.error('Poll failed:', error);
+      }
+    }, 2000);
+    
+    return () => {
+      console.log('Stopping poll');
+      clearInterval(interval);
+    };
+  }, [scanning, selectedScanId]);
+
   // Handle start scan
   const handleStartScan = async () => {
     setProgress(0);
     setScanning(true);
 
     try {
+      console.log('Starting scan with tools:', selectedTools, 'target:', target);
+      
+      // Call real backend API
       const newScan = await startScan(selectedTools, target);
+      
       console.log('Backend returned scan:', newScan);
-      console.log('Scan started with ID:', newScan.id);
-
+      
+      // Add to local state with backend's ID
       setScans((prev) => [newScan, ...prev]);
       setSelectedScanId(newScan.id);
+      
     } catch (error) {
       console.error('Failed to start scan:', error);
       setScanning(false);
@@ -206,7 +164,6 @@ function App() {
     try {
       await cancelScan(selectedScanId);
       
-      // Update local state
       setScans((prev) =>
         prev.map((s) =>
           s.id === selectedScanId
@@ -630,9 +587,7 @@ function App() {
                 </div>
               ) : (
                 <div className="divide-y divide-slate-800">
-                  {[...filteredScans]
-                    .sort((a, b) => new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime())
-                    .map((scan) => (
+                  {filteredScans.map((scan) => (
                     <button
                       key={scan.id}
                       onClick={() => setSelectedScanId(scan.id)}
@@ -666,29 +621,24 @@ function App() {
                         <span
                           className={`px-2 py-1 rounded-lg text-xs font-medium ${
                             scan.status === 'Completed'
-                              ? 'bg-green-500/10 text-green-400 border border-green-500/20'
+                              ? 'bg-green-500/10 text-green-400'
                               : scan.status === 'Clean'
-                              ? 'bg-blue-500/10 text-blue-400 border border-blue-500/20'
+                              ? 'bg-blue-500/10 text-blue-400'
                               : scan.status === 'Failed'
-                              ? 'bg-red-500/10 text-red-400 border border-red-500/20'
-                              : 'bg-yellow-500/10 text-yellow-400 border border-yellow-500/20'
+                              ? 'bg-red-500/10 text-red-400'
+                              : 'bg-yellow-500/10 text-yellow-400'
                           }`}
                         >
                           {scan.status}
                         </span>
                       </div>
                       <div>
-                        <div>
-                          <div className={`font-mono text-sm font-bold ${
-                            scan.riskScore > 70 ? 'text-red-400' : 
-                            scan.riskScore > 40 ? 'text-yellow-400' : 
-                            'text-green-400'
-                          }`}>
-                            {scan.riskScore}%
-                          </div>
-                          <div className="text-xs text-slate-400 line-clamp-1">
-                            {scan.summary}
-                          </div>
+                        <div className={`font-mono text-sm font-bold ${
+                          scan.riskScore > 70 ? 'text-red-400' : 
+                          scan.riskScore > 40 ? 'text-yellow-400' : 
+                          'text-green-400'
+                        }`}>
+                          {scan.riskScore}%
                         </div>
                         <div className="text-xs text-slate-400 line-clamp-1">
                           {scan.summary}
@@ -715,9 +665,7 @@ function App() {
                   </div>
                   <div className="bg-slate-800/50 border border-slate-700 rounded-lg p-4 space-y-3">
                     <div className="font-medium text-slate-200">SUMMARY</div>
-                    <div className="text-sm text-slate-300 whitespace-pre-wrap">
-                      {formatAiText(selectedScan.aiSummary)}
-                    </div>
+                    <div className="text-sm text-slate-300">{selectedScan.aiSummary}</div>
                   </div>
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-1">
@@ -915,9 +863,7 @@ function App() {
                 <>
                   <div className="text-sm text-slate-400">AI summary for the latest run.</div>
                   <div className="bg-slate-800/50 border border-slate-700 rounded-lg p-4 space-y-3">
-                    <div className="text-sm text-slate-300 whitespace-pre-wrap">
-                      {formatAiText(selectedScan.aiSummary)}
-                    </div>
+                    <div className="text-sm text-slate-300">{selectedScan.aiSummary}</div>
                   </div>
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-1">
@@ -964,9 +910,8 @@ function App() {
                             ? 'bg-slate-800 text-slate-200'
                             : 'bg-cyan-500/10 text-slate-200'
                         }`}
-                        style={{ whiteSpace: 'pre-wrap' }}
                       >
-                        {msg.sender === 'ai' ? formatAiText(msg.text) : msg.text}
+                        {msg.text}
                       </div>
                       <div className="text-xs text-slate-500">{msg.time}</div>
                     </div>
